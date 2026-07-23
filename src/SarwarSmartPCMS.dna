@@ -1,3 +1,0 @@
-<DnaLibrary Name="Sarwar Smart PCMS" RuntimeVersion="v4.0">
-  <ExternalLibrary Path="SarwarSmartPCMS.dll" LoadFromBytes="true" Pack="true" />
-</DnaLibrary>
