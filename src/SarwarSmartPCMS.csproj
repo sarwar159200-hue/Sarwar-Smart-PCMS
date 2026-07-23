@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
 
     <PlatformTarget>x86</PlatformTarget>
     <Platforms>x86</Platforms>
@@ -11,31 +12,35 @@
     <AssemblyName>SarwarSmartPCMS</AssemblyName>
     <Version>1.0.0</Version>
 
-    <OutputType>Library</OutputType>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
-
+    <Optimize>true</Optimize>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <Optimize>true</Optimize>
+
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+
+    <ExcelAddInFileName>SarwarSmartPCMS-AddIn</ExcelAddInFileName>
+    <ExcelAddInName>Sarwar Smart PCMS</ExcelAddInName>
 
     <ExcelDnaCreate32BitAddIn>true</ExcelDnaCreate32BitAddIn>
     <ExcelDnaCreate64BitAddIn>false</ExcelDnaCreate64BitAddIn>
 
+    <RunExcelDnaBuild>true</RunExcelDnaBuild>
     <RunExcelDnaPack>true</RunExcelDnaPack>
-    <ExcelDnaPackXllSuffix>-packed</ExcelDnaPackXllSuffix>
 
-    <ExcelAddInFileName>SarwarSmartPCMS-AddIn</ExcelAddInFileName>
-    <ExcelAddInName>Sarwar Smart PCMS</ExcelAddInName>
+    <ExcelDnaPublishPath>publish</ExcelDnaPublishPath>
+    <ExcelDnaPackXllSuffix>-packed</ExcelDnaPackXllSuffix>
+    <ExcelDnaPack32BitXllName>SarwarSmartPCMS-AddIn-packed.xll</ExcelDnaPack32BitXllName>
 
     <ExcelAddInExplicitExports>false</ExcelAddInExplicitExports>
     <ExcelAddInLoadFromBytes>true</ExcelAddInLoadFromBytes>
     <ExcelAddInIncludePdb>false</ExcelAddInIncludePdb>
 
-    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
-    <EnableDynamicLoading>true</EnableDynamicLoading>
-
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ExcelDnaPackCompressResources>true</ExcelDnaPackCompressResources>
+    <ExcelDnaPackRunMultithreaded>false</ExcelDnaPackRunMultithreaded>
+    <ExcelDnaPackManagedResourcePackingOnWindows>true</ExcelDnaPackManagedResourcePackingOnWindows>
   </PropertyGroup>
 
   <ItemGroup>
@@ -50,11 +55,6 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="SarwarSmartPCMS.dna"
-          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
