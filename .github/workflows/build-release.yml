@@ -17,22 +17,9 @@ jobs:
     name: Build 32-bit Excel Add-in
     runs-on: windows-latest
 
-    env:
-      PROJECT_FILE: src/SarwarSmartPCMS.csproj
-      INSTALLER_FILE: installer/SarwarSmartPCMS.iss
-      STAGING_DIR: src/bin/Release/net48/publish
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Display repository structure
-        shell: powershell
-        run: |
-          Write-Host "Repository files:"
-          Get-ChildItem -Path . -Recurse |
-            Select-Object FullName |
-            Format-Table -AutoSize
 
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
@@ -42,13 +29,13 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Verify required project files
+      - name: Verify required files
         shell: powershell
         run: |
           $requiredFiles = @(
-            "${{ env.PROJECT_FILE }}",
-            "${{ env.INSTALLER_FILE }}",
-            "src/SarwarSmartPCMS.dna"
+            "src/SarwarSmartPCMS.csproj",
+            "src/SarwarSmartPCMS.dna",
+            "installer/SarwarSmartPCMS.iss"
           )
 
           foreach ($file in $requiredFiles) {
@@ -62,129 +49,122 @@ jobs:
       - name: Restore NuGet packages
         shell: powershell
         run: |
-          dotnet restore "${{ env.PROJECT_FILE }}"
+          nuget restore "src/SarwarSmartPCMS.csproj" `
+            -NonInteractive
 
           if ($LASTEXITCODE -ne 0) {
-            throw "NuGet restore failed."
+            Write-Host "NuGet restore using nuget.exe was not applicable."
+            Write-Host "Running MSBuild restore instead."
+
+            msbuild "src/SarwarSmartPCMS.csproj" `
+              /t:Restore `
+              /p:Configuration=Release `
+              /p:Platform=x86
           }
 
-      - name: Build Sarwar Smart PCMS x86
+      - name: Clean previous build
         shell: powershell
         run: |
-          dotnet build "${{ env.PROJECT_FILE }}" `
-            --configuration Release `
-            --no-restore `
-            -p:Platform=x86 `
-            -p:PlatformTarget=x86 `
-            -p:Prefer32Bit=true
+          if (Test-Path "src/bin") {
+            Remove-Item "src/bin" -Recurse -Force
+          }
+
+          if (Test-Path "src/obj") {
+            Remove-Item "src/obj" -Recurse -Force
+          }
+
+          Write-Host "Previous build folders removed."
+
+      - name: Build with full MSBuild
+        shell: powershell
+        run: |
+          msbuild "src/SarwarSmartPCMS.csproj" `
+            /t:Restore,Rebuild `
+            /p:Configuration=Release `
+            /p:Platform=x86 `
+            /p:PlatformTarget=x86 `
+            /p:Prefer32Bit=true `
+            /p:DebugSymbols=false `
+            /p:DebugType=None `
+            /p:ExcelDnaCreate32BitAddIn=true `
+            /p:ExcelDnaCreate64BitAddIn=false `
+            /p:RunExcelDnaPack=true `
+            /m `
+            /verbosity:normal
 
           if ($LASTEXITCODE -ne 0) {
-            throw "The 32-bit add-in build failed."
+            throw "MSBuild failed."
           }
 
-      - name: Show generated Excel-DNA files
+      - name: Display generated files
         shell: powershell
         run: |
-          Write-Host "Generated build files:"
+          Write-Host "Generated Excel-DNA files:"
 
-          Get-ChildItem -Path "src/bin/Release" -Recurse -File |
-            Where-Object {
-              $_.Extension -in ".xll", ".dll", ".dna", ".config", ".pdb"
-            } |
+          Get-ChildItem `
+            -Path "src/bin/Release" `
+            -Recurse `
+            -File |
             Select-Object FullName, Length |
             Format-Table -AutoSize
 
-      - name: Locate and stage 32-bit packed XLL
-        id: stage_xll
+      - name: Locate 32-bit packed XLL
         shell: powershell
         run: |
-          $releaseFolder = Resolve-Path "src/bin/Release"
-
-          $allPackedXll = Get-ChildItem `
-            -Path $releaseFolder `
+          $xllFiles = Get-ChildItem `
+            -Path "src/bin/Release" `
             -Recurse `
             -File `
-            -Filter "*packed.xll"
+            -Filter "*.xll"
 
-          Write-Host "Packed XLL candidates:"
+          Write-Host "All generated XLL files:"
 
-          $allPackedXll |
+          $xllFiles |
             Select-Object FullName, Length |
             Format-Table -AutoSize
 
-          # Exclude any explicitly labelled 64-bit file.
-          $x86Xll = $allPackedXll |
+          $packedXll = $xllFiles |
             Where-Object {
-              $_.Name -notmatch "64" -and
-              $_.FullName -notmatch "AddIn64"
+              $_.Name -match "packed" -and
+              $_.Name -notmatch "64"
             } |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
 
-          if (-not $x86Xll) {
-            # Some Excel-DNA builds do not place "32" in the file name.
-            $x86Xll = Get-ChildItem `
-              -Path $releaseFolder `
-              -Recurse `
-              -File `
-              -Filter "*.xll" |
-              Where-Object {
-                $_.Name -notmatch "64" -and
-                $_.FullName -notmatch "AddIn64"
-              } |
-              Sort-Object LastWriteTime -Descending |
-              Select-Object -First 1
+          if (-not $packedXll) {
+            throw "No 32-bit packed XLL was generated."
           }
 
-          if (-not $x86Xll) {
-            throw "No 32-bit Excel-DNA XLL was generated."
-          }
-
-          Write-Host "Selected 32-bit XLL:"
-          Write-Host $x86Xll.FullName
+          $publishFolder = "src/bin/Release/net48/publish"
 
           New-Item `
             -ItemType Directory `
-            -Path "${{ env.STAGING_DIR }}" `
+            -Path $publishFolder `
             -Force |
             Out-Null
 
-          $stagedXll = Join-Path `
-            "${{ env.STAGING_DIR }}" `
-            "SarwarSmartPCMS-AddIn-packed.xll"
+          $destinationXll =
+            Join-Path `
+              $publishFolder `
+              "SarwarSmartPCMS-AddIn-packed.xll"
 
-          Copy-Item `
-            -Path $x86Xll.FullName `
-            -Destination $stagedXll `
-            -Force
+          if ($packedXll.FullName -ne
+              (Join-Path (Resolve-Path $publishFolder) "SarwarSmartPCMS-AddIn-packed.xll")) {
+            Copy-Item `
+              -Path $packedXll.FullName `
+              -Destination $destinationXll `
+              -Force
+          }
 
-          # Copy supporting runtime files to the installer staging folder.
-          $sourceDirectory = $x86Xll.Directory.FullName
+          Write-Host "Selected XLL:"
+          Write-Host $packedXll.FullName
 
-          Get-ChildItem `
-            -Path $sourceDirectory `
-            -File |
-            Where-Object {
-              $_.Extension -in ".dll", ".dna", ".config"
-            } |
-            ForEach-Object {
-              Copy-Item `
-                -Path $_.FullName `
-                -Destination "${{ env.STAGING_DIR }}" `
-                -Force
-            }
+          Write-Host "Staged XLL:"
+          Write-Host $destinationXll
 
-          Write-Host "Installer staging contents:"
-
-          Get-ChildItem "${{ env.STAGING_DIR }}" |
-            Select-Object Name, Length |
-            Format-Table -AutoSize
-
-          "xll_path=$stagedXll" |
-            Out-File `
-              -FilePath $env:GITHUB_OUTPUT `
-              -Encoding utf8 `
-              -Append
+          if (-not (Test-Path $destinationXll)) {
+            throw "The packed XLL could not be staged."
+          }
 
       - name: Install Inno Setup
         shell: powershell
@@ -200,31 +180,29 @@ jobs:
       - name: Build Windows installer
         shell: powershell
         run: |
-          $isccCandidates = @(
-            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+          $possiblePaths = @(
             "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
             "C:\Program Files\Inno Setup 6\ISCC.exe"
           )
 
-          $iscc = $isccCandidates |
+          $iscc = $possiblePaths |
             Where-Object { Test-Path $_ } |
             Select-Object -First 1
 
           if (-not $iscc) {
-            throw "ISCC.exe could not be found after installing Inno Setup."
+            throw "Inno Setup compiler was not found."
           }
 
-          Write-Host "Using Inno Setup compiler:"
+          Write-Host "Using:"
           Write-Host $iscc
 
-          & $iscc "${{ env.INSTALLER_FILE }}"
+          & $iscc "installer/SarwarSmartPCMS.iss"
 
           if ($LASTEXITCODE -ne 0) {
-            throw "The Windows installer build failed."
+            throw "Installer compilation failed."
           }
 
-      - name: Verify installer output
+      - name: Verify installer
         shell: powershell
         run: |
           $installer = Get-ChildItem `
@@ -235,14 +213,14 @@ jobs:
             Select-Object -First 1
 
           if (-not $installer) {
-            throw "No Setup.exe was generated."
+            throw "No installer EXE was generated."
           }
 
-          Write-Host "Installer generated successfully:"
+          Write-Host "Installer created successfully:"
           Write-Host $installer.FullName
-          Write-Host "Size: $($installer.Length) bytes"
+          Write-Host "Installer size: $($installer.Length) bytes"
 
-      - name: Upload build files
+      - name: Upload installer and add-in
         uses: actions/upload-artifact@v4
         with:
           name: Sarwar-Smart-PCMS-x86
@@ -250,13 +228,13 @@ jobs:
           retention-days: 30
           path: |
             installer/Output/*.exe
-            src/bin/Release/net48/publish/*.xll
-            src/bin/Release/net48/publish/*.dll
-            src/bin/Release/net48/publish/*.dna
+            src/bin/Release/**/*.xll
+            src/bin/Release/**/*.dll
+            src/bin/Release/**/*.dna
             README.md
             docs/**
 
-      - name: Create GitHub release
+      - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
